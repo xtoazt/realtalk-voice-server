@@ -22,6 +22,8 @@ const io = new Server(server, {
 const roomToSockets = new Map()
 // socket.id -> { roomId, userId }
 const socketInfo = new Map()
+// userId -> Set(socket.id)
+const userIdToSockets = new Map()
 
 console.log(`[voice] Starting Socket.IO signaling server...`)
 
@@ -35,6 +37,9 @@ io.on('connection', (socket) => {
     
     socket.join(roomId)
     socketInfo.set(socket.id, { roomId, userId })
+
+    if (!userIdToSockets.has(userId)) userIdToSockets.set(userId, new Set())
+    userIdToSockets.get(userId).add(socket.id)
 
     if (!roomToSockets.has(roomId)) roomToSockets.set(roomId, new Set())
     roomToSockets.get(roomId).add(socket.id)
@@ -61,6 +66,49 @@ io.on('connection', (socket) => {
     io.to(to).emit('signal-ice-candidate', { from: socket.id, candidate })
   })
 
+  // Direct-call aware signaling (route by userId when direct flag is present)
+  const getSocketIdsForUser = (userId) => Array.from(userIdToSockets.get(userId) || [])
+
+  socket.on('signal-offer', ({ to, description, direct }) => {
+    if (!direct) return
+    const targets = getSocketIdsForUser(to)
+    targets.forEach((sid) => io.to(sid).emit('signal-offer', { from: socketInfo.get(socket.id)?.userId, description, direct: true }))
+  })
+
+  socket.on('signal-answer', ({ to, description, direct }) => {
+    if (!direct) return
+    const targets = getSocketIdsForUser(to)
+    targets.forEach((sid) => io.to(sid).emit('signal-answer', { from: socketInfo.get(socket.id)?.userId, description, direct: true }))
+  })
+
+  socket.on('signal-ice-candidate', ({ to, candidate, direct }) => {
+    if (!direct) return
+    const targets = getSocketIdsForUser(to)
+    targets.forEach((sid) => io.to(sid).emit('signal-ice-candidate', { from: socketInfo.get(socket.id)?.userId, candidate, direct: true }))
+  })
+
+  // Call invite/accept/decline flow
+  socket.on('call-invite', ({ to }) => {
+    const fromUserId = socketInfo.get(socket.id)?.userId
+    if (!fromUserId || !to) return
+    const targets = getSocketIdsForUser(to)
+    targets.forEach((sid) => io.to(sid).emit('incoming-call', { fromUserId }))
+  })
+
+  socket.on('call-accept', ({ to }) => {
+    const fromUserId = socketInfo.get(socket.id)?.userId
+    if (!fromUserId || !to) return
+    const targets = getSocketIdsForUser(to)
+    targets.forEach((sid) => io.to(sid).emit('call-accept', { fromUserId }))
+  })
+
+  socket.on('call-decline', ({ to }) => {
+    const fromUserId = socketInfo.get(socket.id)?.userId
+    if (!fromUserId || !to) return
+    const targets = getSocketIdsForUser(to)
+    targets.forEach((sid) => io.to(sid).emit('call-decline', { fromUserId }))
+  })
+
   socket.on('leave-room', () => {
     const info = socketInfo.get(socket.id)
     if (!info) return
@@ -84,6 +132,11 @@ io.on('connection', (socket) => {
     if (!info) return
     const { roomId, userId } = info
     socketInfo.delete(socket.id)
+    const uset = userIdToSockets.get(userId)
+    if (uset) {
+      uset.delete(socket.id)
+      if (uset.size === 0) userIdToSockets.delete(userId)
+    }
     const set = roomToSockets.get(roomId)
     if (set) {
       set.delete(socket.id)
