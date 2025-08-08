@@ -1,0 +1,15 @@
+{
+  "name": "realtalk-voice-server",
+  "version": "1.0.0",
+  "description": "Socket.IO signaling server for RealTalk voice chat",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js"
+  },
+  "dependencies": {
+    "socket.io": "^4.8.1"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  }
+}
