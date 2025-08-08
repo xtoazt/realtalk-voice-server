@@ -9,7 +9,7 @@ const io = new Server(server, {
   cors: {
     origin: [
       "http://localhost:3000",
-      "https://realchatfr.vercel.app.vercel.app", // Replace with your actual Vercel URL
+      "https://realchatfr.vercel.app", // Replace with your actual Vercel URL
       /\.vercel\.app$/,
       /\.realtalk\./
     ],
@@ -109,3 +109,4 @@ server.on('request', (req, res) => {
     }))
   }
 })
+
